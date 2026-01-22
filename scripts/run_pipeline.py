@@ -10,84 +10,79 @@ from pathlib import Path
 from datetime import datetime
 
 import sys
+import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.settings import Settings
+from infrastructure.api_key_pool import APIKeyPool, RotationStrategy
 from adapters.gateways.gemini_llm import GeminiLLMGateway
 from adapters.repositories.file_repository import FileAssetRepository
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 from usecases.scene_architect import SceneArchitect, SceneArchitectInput
 from usecases.shot_composer import LLMDirectComposer, TemplateBasedComposer, ShotComposerInput
 from usecases.prompt_builder import PromptBuilder, PromptBuilderInput
 
 
 # =============================================================================
-# 입력 스토리 (루테란의 결의)
-# - 원작 로어 기반: 사슬전쟁 막바지, 카제로스 봉인 직전 에스더 회의
-# - specs/lore/story_context.md 참조
+# 입력 스토리 (루테란의 결의) - 트레일러 샷 리스트
+# - 각 항목 = 1 샷 (L2 스킵, 바로 L3로)
+# - 임팩트 위주, 긴장감 빌드업, 클라이맥스
 # =============================================================================
 STORY = """
-사슬전쟁 막바지. 악마들의 침공으로 아크라시아는 폐허가 되었다.
-심연의 군주 카제로스와 그의 6대 군단. 수만의 악마들.
-인류는 절망의 끝에 서 있었다.
+[SHOT LIST - 각 항목이 하나의 독립된 샷. 빠른 컷 전환.]
 
-그때, 일곱 명의 영웅이 나타났다. 훗날 '에스더(찬란한 별)'라 불리게 될 이들.
-그 중심에 루테란이 있었다.
+SHOT 01 (2초) - EWS, 분위기
+검은 화면. 천둥소리. 붉은 하늘이 서서히 드러난다.
+아크라시아 대륙 전체가 불타고 있다. 연기와 화염.
 
-폐허가 된 원형 석조 광장. 부서진 기둥들 사이로 횃불이 타오른다.
-에스더들이 모여 있다. 마지막 작전을 논의하기 위해.
+SHOT 02 (2초) - EWS, 임팩트
+하늘 가득 악마 군단. 수만 개의 검은 날개가 태양을 완전히 가린다.
+화면이 어둠으로 뒤덮인다.
 
-아제나가 먼저 입을 연다. 로헨델의 여왕, 진홍빛 갑옷의 전사.
-그녀의 목소리에는 억누르지 못한 분노가 서려 있다.
+SHOT 03 (1초) - ECU, 임팩트
+카제로스의 거대한 눈. 붉게 타오르는 동공. 화면을 가득 채운다.
 
-"봉인? 봉인이라고?"
+SHOT 04 (2초) - EWS, 분위기
+폐허가 된 도시. 무너진 성벽 사이로 연기가 피어오른다.
+침묵. 바람 소리만.
 
-그녀의 눈에 눈물이 고인다. 분노의 눈물.
-몽환군단에게 로헨델을 유린당한 기억. 기사단장들이 악마에게 장악당한 참상.
-그 모든 것이 그녀의 목소리를 떨리게 한다.
+SHOT 05 (1초) - WS, 전환
+역광. 언덕 위 일곱 개의 실루엣. 망토가 바람에 휘날린다.
+에스더의 등장.
 
-"저 괴물들이 우리 백성을 얼마나 죽였는지 잊은 거야?"
-아제나의 주먹이 떨린다.
-"소멸시켜야 해. 완전히. 다시는 일어나지 못하도록."
+SHOT 06 (1초) - CU, 캐릭터
+아제나의 눈. 분노로 이글거린다. 눈물이 고여있다.
 
-루테란은 묵묵히 듣는다.
-그의 어깨 위에 놓인 무게가 보이는 듯하다.
-엘가시아에서 알게 된 진실. 아무에게도 말할 수 없는 비밀.
-카제로스를 소멸시키면 더 큰 파멸이 온다는 것.
+SHOT 07 (1초) - CU, 캐릭터
+카단. 검을 천천히 뽑는다. 검날에서 섬광.
 
-하지만 그것을 말할 수 없다. 미래가 바뀔 것이기에.
+SHOT 08 (2초) - MS, 캐릭터
+루테란. 석양빛이 금빛 갑옷을 붉게 물들인다.
+천천히 고개를 든다. 결연한 눈빛.
 
-카단이 조용히 지켜본다. 은백색 갑옷의 가디언 슬레이어.
-말없이 루테란을 바라보는 그의 눈에는 이해가 담겨 있다.
-그는 알고 있었다. 루테란의 선택이 필연임을.
+SHOT 09 (1초) - ECU, 오브젝트
+패자의 검. 검날 클로즈업. 금빛 룬 문자가 빛나기 시작한다.
 
-침묵이 흐른다.
+SHOT 10 (2초) - MS → CU, 액션
+루테란이 검을 하늘로 치켜든다.
+검에서 황금빛 광채가 폭발한다!
 
-루테란이 천천히 고개를 든다.
-석양빛이 그의 금빛 갑옷을 붉게 물들인다.
-패자의 검 - 에스더 갈라투르가 만들어준 전설의 무기.
-그 검을 천천히 자신 앞에 세운다.
+SHOT 11 (2초) - WS, 액션
+에스더 일곱 명이 일제히 무기를 든다.
+각자의 아크 파워가 빛난다. 일곱 색의 빛이 하늘로 솟구친다.
 
-"우리들의 역할은 카제로스의 봉인으로 끝난다."
+SHOT 12 (2초) - EWS, 클라이맥스
+에스더들이 악마 군단을 향해 돌격한다.
+폭발. 마법. 검격. 화면 가득 카오스.
 
-아제나가 숨을 멈춘다. 다른 에스더들도 루테란을 바라본다.
-
-"500년 뒤, 새로운 빛이 올 것이다."
-루테란의 눈에 결의가 깃든다.
-"그때까지 우리가 버텨야 한다. 이것이 내 선택이다."
-
-카단이 고개를 끄덕인다. 말없는 동의.
-아제나는 이를 악문다. 하지만 그녀도 알고 있었다.
-저 남자를 따르지 않을 수 없다는 것을.
-
-루테란이 검을 하늘로 들어올린다.
-검에서 금빛 광채가 퍼져나간다. 아크의 힘.
-
+SHOT 13 (1초) - ECU, 엔딩
+루테란의 눈. 결의에 찬 눈빛.
 "여기가 끝이 아니다."
 
-에스더들이 하나둘 그의 뒤에 선다.
-카단이. 아제나가. 그리고 나머지 에스더들이.
-부서진 깃발들이 바람에 나부끼고,
-새로운 결의가 폐허 위에 피어난다.
+SHOT 14 (1초) - 블랙
+페이드 투 블랙. 타이틀.
 """
 
 CHARACTER_HINTS = [
@@ -144,9 +139,19 @@ async def main():
     output_dir = Path(f"pipeline_output/{timestamp}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 어댑터 초기화
-    api_keys = settings.google_api_keys_list
-    llm = GeminiLLMGateway(api_key=api_keys[-1], model="gemini-2.0-flash-lite")
+    # 어댑터 초기화 (APIKeyPool로 자동 failover)
+    key_infos = settings.google_api_key_infos  # alias 포함
+    key_pool = APIKeyPool(
+        keys=key_infos,
+        strategy=RotationStrategy.ROUND_ROBIN,
+        daily_limit=1500,  # Gemini API 무료 티어
+        max_failures_per_key=3,
+    )
+    print(f"API Key Pool: {len(key_infos)}개 키 로드됨")
+    for info in key_infos:
+        print(f"  - [{info.alias}] {info.key[:12]}...")
+
+    llm = GeminiLLMGateway(key_pool=key_pool, model="gemini-2.0-flash-lite")
     repo = FileAssetRepository(base_dir=output_dir)
 
     try:

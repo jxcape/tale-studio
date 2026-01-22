@@ -30,6 +30,8 @@ tale/
 ├── usecases/         # Application logic & interfaces
 ├── adapters/         # External API implementations
 ├── infrastructure/   # Settings, CLI, utilities
+├── scripts/          # 실행 스크립트
+├── specs/            # 스펙 문서
 └── tests/            # Unit & integration tests
 ```
 
@@ -41,7 +43,9 @@ tale/
 | Image Generation | Google Imagen | Character references |
 | LLM | Gemini / OpenAI | Scene analysis, prompt generation |
 
-## Installation
+## Quick Start
+
+### 1. 설치
 
 ```bash
 # Clone
@@ -52,30 +56,69 @@ cd tale-studio
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-
-# Configure
-cp .env.example .env
-# Edit .env with your API keys
 ```
 
-## Usage
+### 2. 환경 설정
 
 ```bash
-# Run pipeline
-python scripts/run_pipeline.py --story "Your story text here"
+cp .env.example .env
+```
 
-# Run tests
-pytest
+`.env` 파일 수정:
+
+```bash
+# Google API Keys (alias 포함 형식)
+# 형식: key:alias 또는 key:alias:project_id
+GOOGLE_API_KEYS=AIzaSy...:key1, AIzaSy...:key2
+
+# Google Cloud 설정
+GOOGLE_PROJECT_ID=your-project-id
+GOOGLE_LOCATION=us-central1
+
+# OpenAI (optional)
+OPENAI_API_KEY=sk-...
+```
+
+### 3. 파이프라인 실행
+
+```bash
+# L1-L2-L3 전체 파이프라인 실행
+python scripts/run_pipeline.py
+
+# 출력 위치: pipeline_output/YYYYMMDD_HHMMSS/
+```
+
+### 4. 출력 결과
+
+```
+pipeline_output/20260121_192652/
+├── l1_scenes.json      # L1 씬 분할 결과
+├── l2_shots.json       # L2 샷 시퀀스
+├── l3_prompts.json     # L3 최종 프롬프트
+└── metadata.json       # 실행 메타데이터
 ```
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure:
+### 환경 변수
 
-- `OPENAI_API_KEY` - OpenAI API key
-- `GOOGLE_API_KEYS` - Google Cloud API keys (comma-separated for rotation)
-- `GOOGLE_PROJECT_ID` - GCP project ID
-- `GOOGLE_LOCATION` - GCP region (e.g., us-central1)
+| 변수 | 설명 | 예시 |
+|------|------|------|
+| `GOOGLE_API_KEYS` | Gemini API 키 (alias 포함) | `AIzaSy...:xcape, AIzaSy...:tale` |
+| `GOOGLE_PROJECT_ID` | GCP 프로젝트 ID | `my-project` |
+| `GOOGLE_LOCATION` | GCP 리전 | `us-central1` |
+| `OPENAI_API_KEY` | OpenAI API 키 (optional) | `sk-...` |
+| `VEO_KEY_ROTATION_STRATEGY` | 키 로테이션 전략 | `round_robin` / `least_used` |
+
+### API Key Pool
+
+여러 Google API 키를 등록하면 429 에러 시 자동 failover:
+
+```python
+# 내부 동작
+key_pool = APIKeyPool(keys=[...], strategy=RotationStrategy.ROUND_ROBIN)
+# 키 1 실패 → 자동으로 키 2로 전환
+```
 
 ## Key Concepts
 
@@ -108,9 +151,34 @@ ruff format .
 
 ## Specs
 
-- [Architecture](specs/architecture.md) - System design
-- [MVP](specs/mvp.md) - MVP scope and decisions
-- [Style Heuristics](specs/style_heuristics.md) - Visual style guidelines
+### 핵심 설계
+- [Architecture](specs/architecture.md) - 시스템 아키텍처
+- [MVP](specs/mvp.md) - MVP 스코프 및 결정사항
+
+### 기능 스펙
+- [Next Phase](specs/next_phase.md) - 다음 단계 로드맵
+- [Pumpup](specs/pumpup.md) - 서사 확장 기능
+- [Dialogue](specs/dialogue.md) - 대화 생성 기능
+- [Technique DB](specs/technique_db.md) - 연출 테크닉 DB
+
+### 스타일 가이드
+- [Style Heuristics](specs/style_heuristics.md) - 비주얼 스타일 가이드
+
+## Development
+
+```bash
+# 테스트 실행
+pytest
+
+# 커버리지 포함
+pytest --cov
+
+# 린트
+ruff check .
+
+# 포맷
+ruff format .
+```
 
 ## License
 
