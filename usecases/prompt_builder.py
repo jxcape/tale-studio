@@ -8,7 +8,7 @@ from typing import Optional
 
 from domain.entities import Shot, Character, Prompt, CinematographySpec
 from domain.value_objects import ShotType
-from usecases.interfaces import AssetRepository
+from usecases.interfaces import AssetRepository, CinematographyKnowledgeDB
 
 
 @dataclass
@@ -87,8 +87,13 @@ class PromptBuilder:
     - Add style keywords and negative prompts
     """
 
-    def __init__(self, asset_repository: AssetRepository):
+    def __init__(
+        self,
+        asset_repository: AssetRepository,
+        knowledge_db: Optional[CinematographyKnowledgeDB] = None,
+    ):
         self._repo = asset_repository
+        self._knowledge_db = knowledge_db
 
     async def execute(self, input_data: PromptBuilderInput) -> PromptBuilderOutput:
         """Build prompts for all shots."""
@@ -126,6 +131,28 @@ class PromptBuilder:
 
         # Get cinematography from DB
         cinematography = CINEMATOGRAPHY_DB.get(shot.shot_type)
+
+        # Enhance with Knowledge DB if available
+        if self._knowledge_db and cinematography:
+            try:
+                # Query for additional techniques based on shot purpose
+                techniques = self._knowledge_db.query(
+                    "camera_language",
+                    limit=1,
+                )
+                if techniques:
+                    # Append technique to existing spec
+                    technique = techniques[0]
+                    if not cinematography.camera_movement:
+                        cinematography = CinematographySpec(
+                            shot_framing=cinematography.shot_framing,
+                            camera_angle=cinematography.camera_angle,
+                            camera_movement=technique.prompt_fragment,
+                            lighting_type=cinematography.lighting_type,
+                        )
+            except (FileNotFoundError, KeyError, ValueError):
+                # Knowledge DB query failed - use base cinematography only
+                pass
 
         # Build scene context
         context = scene_context
